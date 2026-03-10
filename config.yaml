@@ -1,0 +1,47 @@
+# Global configuration — all stages read from here
+data:
+  n_samples: 50000
+  fraud_ratio: 0.002
+  seed: 42  # ← Add this line (reproducibility)
+  use_real_dataset: false  # For synthetic first
+
+amount:
+  normal_scale: 88.0        # Real dataset mean ~88
+  fraud_base: 150.0         # Extra bias for fraud
+  fraud_scale: 200.0        # Higher variance
+
+costs:
+  c_fp: 50                  # False positive cost (customer friction) - LEGACY: global default
+  c_tp: 0                   # True positive cost (investigation — baseline 0)
+  # Client-specific FP costs (heterogeneous economics)
+  c_fp_per_client:
+    0: 200  # Premium bank - high friction cost
+    1: 200  # Premium bank - high friction cost
+    2: 50   # Mid-tier bank
+    3: 50   # Mid-tier bank
+    4: 50   # Mid-tier bank
+    5: 10   # Small bank - low friction cost
+    6: 10   # Small bank - low friction cost
+    7: 10   # Small bank - low friction cost
+
+model:
+  hidden_layers: [256, 128, 64, 32]
+  dropout: 0.3
+  lr: 0.001
+  epochs: 50
+  early_stop_patience: 5
+
+fl:
+  n_clients: 8
+  rounds: 20
+  local_epochs: 10
+  non_iid_skew: strong      # Options: none, mild, strong
+
+paths:
+  synthetic_output: data/processed/synthetic.parquet
+  real_dataset: data/raw/creditcard.csv   # Place real file here later
+
+experiments:
+  run_sensitivity: true
+  c_fp_values: [10, 50, 100]      # Vary FP cost
+  skew_levels: ["mild", "strong"] # mild: frac=0.2 duplication, strong: 0.4
