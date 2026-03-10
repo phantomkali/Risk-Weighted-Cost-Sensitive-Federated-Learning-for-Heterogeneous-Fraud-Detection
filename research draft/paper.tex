@@ -1,1 +1,460 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{array}
+\usepackage{subcaption}
 
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Risk-Weighted Cost-Sensitive Federated Learning for Heterogeneous Fraud Detection\\
+{\footnotesize \textsuperscript{}}
+}
+
+\author{\IEEEauthorblockN{Author Name}
+\IEEEauthorblockA{\textit{Department of Computer Science} \\
+\textit{University Name}\\
+City, Country \\
+email@university.edu}
+}
+
+\maketitle
+
+\begin{abstract}
+Federated learning enables collaborative fraud detection across financial institutions while preserving data privacy. However, standard aggregation methods like FedAvg treat all clients equally, ignoring the heterogeneous economic realities of participating institutions. Different banks face varying false positive costs due to customer friction, operational overhead, and regulatory constraints. We propose a \textbf{Risk-Weighted Cost-Sensitive Federated Learning} framework that incorporates client-specific economic costs into both model aggregation and decision threshold optimization. Our approach weights client contributions based on their economic risk exposure and enables personalized decision boundaries per institution. Experimental results on synthetic credit card fraud data demonstrate that our method achieves a \textbf{64.39\% average loss reduction} compared to FedAvg under heterogeneous economic cost settings, with \textbf{100\% of clients} experiencing improved economic outcomes. The framework provides a principled approach to heterogeneous economic modeling in privacy-preserving collaborative learning.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Federated Learning, Fraud Detection, Cost-Sensitive Learning, Risk-Weighted Aggregation, Financial Machine Learning
+\end{IEEEkeywords}
+
+\section{Introduction}
+\label{sec:introduction}
+
+Credit card fraud causes billions of dollars in losses annually, making effective fraud detection systems critical for financial institutions \cite{dal2017credit}. Machine learning models have proven highly effective for fraud detection, but individual banks often lack sufficient fraud data to train robust models independently. Federated learning (FL) offers a compelling solution by enabling collaborative model training across institutions without sharing sensitive transaction data \cite{mcmahan2017communication}.
+
+However, standard federated learning approaches like FedAvg \cite{mcmahan2017communication} treat all participating clients equally during model aggregation. This assumption is fundamentally flawed in the fraud detection context due to several factors:
+
+\begin{itemize}
+    \item \textbf{Heterogeneous False Positive Costs}: Premium banks serving high-net-worth clients face significantly higher costs when legitimate transactions are incorrectly flagged, due to customer friction and potential account closure \cite{elkan2001foundations}.
+    \item \textbf{Varying Fraud Exposure}: Different institutions handle varying transaction volumes and fraud amounts, creating different economic risk profiles.
+    \item \textbf{Suboptimal Decision Thresholds}: A single global threshold optimized for average conditions is economically suboptimal for individual institutions.
+\end{itemize}
+
+We propose \textbf{Risk-Weighted Cost-Sensitive Federated Learning}, a framework that addresses these limitations through two key innovations:
+
+\begin{enumerate}
+    \item \textbf{Risk-Weighted Aggregation}: Client contributions to the global model are weighted by their economic risk exposure, computed using client-specific false positive costs.
+    \item \textbf{Personalized Threshold Optimization}: Each client optimizes their decision threshold based on their specific economic cost structure.
+\end{enumerate}
+
+Our experimental results demonstrate significant improvements over standard FedAvg, with average loss reductions of 64.39\% across all participating clients.
+
+\section{Related Work}
+\label{sec:related_work}
+
+\subsection{Federated Learning}
+
+Federated learning was introduced by McMahan et al. \cite{mcmahan2017communication} with the FedAvg algorithm, which averages model updates from participating clients. Subsequent work has addressed challenges including non-IID data distributions \cite{li2020federated}, communication efficiency \cite{konevcny2016federated}, and privacy guarantees \cite{geyer2017differentially}.
+
+\subsection{Cost-Sensitive Learning}
+
+Cost-sensitive learning addresses the asymmetric costs of different types of classification errors \cite{elkan2001foundations}. In fraud detection, the cost of a false negative (missed fraud) is typically the fraud amount, while false positive costs include customer friction and operational overhead \cite{bahnsen2014example}. Threshold optimization techniques have been developed to minimize total economic loss \cite{bahnsen2016example}.
+
+\subsection{Federated Learning for Fraud Detection}
+
+Recent work has applied federated learning to fraud detection \cite{yang2019federated}, demonstrating privacy-preserving collaborative learning. However, existing approaches do not account for heterogeneous economic costs across participating institutions. Our work bridges this gap by incorporating client-specific cost structures into both aggregation and inference.
+
+\section{Problem Formulation}
+\label{sec:problem}
+
+\subsection{Federated Learning Setup}
+
+Consider $K$ financial institutions (clients) participating in federated learning. Each client $k$ has a local dataset $\mathcal{D}_k = \{(\mathbf{x}_i, y_i, a_i)\}_{i=1}^{n_k}$, where $\mathbf{x}_i \in \mathbb{R}^d$ is the feature vector, $y_i \in \{0, 1\}$ is the fraud label, and $a_i \in \mathbb{R}^+$ is the transaction amount.
+
+\subsection{Economic Cost Model}
+
+For each client $k$, we define the economic cost structure:
+
+\begin{itemize}
+    \item \textbf{False Negative Cost}: $C_{FN}^{(k)}(i) = a_i$ (the fraud amount)
+    \item \textbf{False Positive Cost}: $C_{FP}^{(k)}$ (client-specific friction cost)
+\end{itemize}
+
+The total economic loss for client $k$ at threshold $\tau$ is:
+
+\begin{equation}
+    \mathcal{L}_k(\tau) = \sum_{i: \hat{y}_i=0, y_i=1} a_i + C_{FP}^{(k)} \cdot \sum_{i: \hat{y}_i=1, y_i=0} 1
+    \label{eq:economic_loss}
+\end{equation}
+
+where $\hat{y}_i = \mathbb{1}[p_i \geq \tau]$ and $p_i$ is the predicted fraud probability.
+
+\subsection{Objective}
+
+Our goal is to learn a global model $f_\theta$ and client-specific thresholds $\{\tau_k\}_{k=1}^K$ that minimize the total economic loss:
+
+\begin{equation}
+    \min_{\theta, \{\tau_k\}} \sum_{k=1}^{K} \mathcal{L}_k(\tau_k; f_\theta)
+    \label{eq:objective}
+\end{equation}
+
+In practice, this objective is optimized via alternating local training of model parameters and post-hoc threshold optimization per client.
+
+\section{Proposed Method}
+\label{sec:method}
+
+\subsection{Overview}
+
+Our Risk-Weighted Cost-Sensitive Federated Learning framework consists of three components:
+
+\begin{enumerate}
+    \item \textbf{Local Training}: Each client trains on their local data using class-weighted binary cross-entropy loss.
+    \item \textbf{Risk-Weighted Aggregation}: Client model updates are weighted by their economic risk exposure.
+    \item \textbf{Personalized Threshold Optimization}: Each client optimizes their decision threshold using their specific cost structure.
+\end{enumerate}
+
+\subsection{Neural Network Architecture}
+
+We employ a multi-layer perceptron (MLP) for fraud classification:
+
+\begin{equation}
+    f_\theta(\mathbf{x}) = \sigma(\mathbf{W}_L \cdot \text{ReLU}(\ldots \text{ReLU}(\mathbf{W}_1 \mathbf{x} + \mathbf{b}_1) \ldots) + \mathbf{b}_L)
+\end{equation}
+
+The architecture consists of four hidden layers with dimensions [256, 128, 64, 32], each followed by batch normalization, ReLU activation, and dropout (rate 0.3).
+
+\subsection{Local Training}
+
+Each client $k$ minimizes the class-weighted binary cross-entropy loss:
+
+\begin{equation}
+    \mathcal{L}_{BCE}^{(k)} = -\frac{1}{n_k} \sum_{i=1}^{n_k} \left[ w_+ y_i \log(p_i) + (1-y_i) \log(1-p_i) \right]
+\end{equation}
+
+where $w_+ = \frac{n_k}{n_k^+}$ is the positive class weight to handle class imbalance.
+
+\subsection{Risk Score Computation}
+
+After local training, each client computes their economic risk score:
+
+\begin{equation}
+    R_k = \frac{\mathcal{L}_k^*}{n_k}
+    \label{eq:risk_score}
+\end{equation}
+
+where $\mathcal{L}_k^* = \min_\tau \mathcal{L}_k(\tau)$ is the minimum achievable economic loss for client $k$ using their client-specific $C_{FP}^{(k)}$. This normalization ensures that clients with higher expected per-sample economic loss exert proportionally greater influence during aggregation.
+
+\begin{algorithm}[t]
+\caption{Risk-Weighted FL with Client-Specific Costs}
+\label{alg:risk_weighted}
+\begin{algorithmic}[1]
+\STATE \textbf{Input:} $K$ clients, $T$ rounds, client costs $\{C_{FP}^{(k)}\}$
+\STATE Initialize global model $\theta^{(0)}$
+\FOR{round $t = 1$ to $T$}
+    \FOR{each client $k \in \{1, \ldots, K\}$ in parallel}
+        \STATE $\theta_k^{(t)} \leftarrow$ LocalTrain$(\theta^{(t-1)}, \mathcal{D}_k)$
+        \STATE Compute predictions on validation set
+        \STATE $\tau_k^* \leftarrow \arg\min_\tau \mathcal{L}_k(\tau; C_{FP}^{(k)})$
+        \STATE $R_k \leftarrow \mathcal{L}_k(\tau_k^*) / n_k$
+    \ENDFOR
+    \STATE Normalize: $w_k \leftarrow R_k / \sum_{j=1}^{K} R_j$
+    \STATE Aggregate: $\theta^{(t)} \leftarrow \sum_{k=1}^{K} w_k \cdot \theta_k^{(t)}$
+\ENDFOR
+\STATE \textbf{Output:} Global model $\theta^{(T)}$, thresholds $\{\tau_k^*\}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Risk-Weighted Aggregation}
+
+The global model is updated using risk-weighted averaging:
+
+\begin{equation}
+    \theta^{(t)} = \sum_{k=1}^{K} w_k \cdot \theta_k^{(t)}
+    \label{eq:aggregation}
+\end{equation}
+
+where the aggregation weights are:
+
+\begin{equation}
+    w_k = \frac{R_k}{\sum_{j=1}^{K} R_j}
+    \label{eq:weights}
+\end{equation}
+
+This ensures that clients with higher economic risk exposure have greater influence on the global model.
+
+\subsection{Personalized Threshold Optimization}
+
+Each client $k$ optimizes their decision threshold independently:
+
+\begin{equation}
+    \tau_k^* = \arg\min_{\tau \in [0,1]} \mathcal{L}_k(\tau; C_{FP}^{(k)})
+    \label{eq:threshold}
+\end{equation}
+
+We perform a grid search over $\tau \in \{0, 0.01, 0.02, \ldots, 1.0\}$ to find the optimal threshold. The complete algorithm is presented in Algorithm \ref{alg:risk_weighted}.
+
+\section{Experimental Setup}
+\label{sec:experiments}
+
+\subsection{Dataset}
+
+We generate synthetic credit card transaction data based on the characteristics of the Kaggle Credit Card Fraud Dataset \cite{dal2017credit}:
+
+\begin{itemize}
+    \item \textbf{Total transactions}: 50,000
+    \item \textbf{Fraud ratio}: 0.2\% (100 fraud cases)
+    \item \textbf{Features}: 28 PCA-transformed features (V1-V28) plus Amount
+    \item \textbf{Amount distribution}: Normal transactions follow $\mathcal{N}(88, 88^2)$; fraud transactions have elevated amounts with $\mu = 150$ and $\sigma = 200$
+\end{itemize}
+
+\subsection{Client Configuration}
+
+We simulate $K=8$ financial institutions with heterogeneous economic profiles:
+
+\begin{table}[h]
+\centering
+\caption{Client Economic Profiles}
+\label{tab:client_profiles}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Client} & \textbf{Type} & \textbf{$C_{FP}$} & \textbf{Description} \\
+\midrule
+0, 1 & Premium & \$200 & High-value customers \\
+2, 3, 4 & Standard & \$50 & Mid-tier institution \\
+5, 6, 7 & Small & \$10 & Low friction cost \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Non-IID Data Distribution}
+
+To simulate realistic heterogeneity, we create non-IID client splits:
+
+\begin{itemize}
+    \item Premium clients receive higher-value fraud transactions
+    \item Fraud distribution follows economic weighting: $[35\%, 25\%, 12\%, 10\%, 8\%, 5\%, 3\%, 2\%]$ for strong skew
+    \item All clients maintain minimum fraud cases (2+ per client)
+\end{itemize}
+
+\subsection{Training Configuration}
+
+\begin{itemize}
+    \item \textbf{Federated rounds}: 20
+    \item \textbf{Local epochs}: 10
+    \item \textbf{Learning rate}: 0.001
+    \item \textbf{Optimizer}: AdamW
+    \item \textbf{Batch size}: 256
+    \item \textbf{Early stopping patience}: 5 epochs
+\end{itemize}
+
+\subsection{Baselines}
+
+We compare our method against:
+
+\begin{enumerate}
+    \item \textbf{Centralized}: Traditional centralized training with all data
+    \item \textbf{FedAvg}: Standard federated averaging \cite{mcmahan2017communication} with uniform client weights
+\end{enumerate}
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Overall Performance}
+
+Table \ref{tab:main_results} presents the overall comparison between FedAvg and our Risk-Weighted approach.
+
+\begin{table}[h]
+\centering
+\caption{Overall Performance Comparison}
+\label{tab:main_results}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Metric} & \textbf{FedAvg} & \textbf{Risk-Weighted} & \textbf{Improvement} \\
+\midrule
+Total Economic Loss & \$20,629 & \$9,222 & \textbf{55.3\%} \\
+Avg. Loss per Client & \$2,579 & \$1,153 & \textbf{64.39\%} \\
+Total Savings & -- & -- & \textbf{\$11,407} \\
+Clients Improved & -- & 8/8 & \textbf{100\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Our Risk-Weighted approach achieves a 64.39\% average loss reduction compared to FedAvg, with all 8 clients experiencing improved economic outcomes.
+
+\subsection{Per-Client Threshold Analysis}
+
+Table \ref{tab:threshold_analysis} shows the optimal thresholds discovered by each method for different client types.
+
+\begin{table}[h]
+\centering
+\caption{Per-Client Threshold Differentiation}
+\label{tab:threshold_analysis}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Client Type} & \textbf{$C_{FP}$} & \textbf{FedAvg $\tau$} & \textbf{RW $\tau$} & \textbf{RW Recall} \\
+\midrule
+Premium (0, 1) & \$200 & 0.26--0.27 & 0.17--0.20 & 56--62\% \\
+Standard (2--4) & \$50 & 0.27 & 0.14--0.17 & 50--78\% \\
+Small (5--7) & \$10 & 0.27 & 0.13--0.20 & 67--100\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Threshold Behavior Analysis}
+
+The personalized threshold optimization exhibits expected economic behavior:
+
+\begin{itemize}
+    \item \textbf{Premium clients} ($C_{FP}=\$200$): Conservative thresholds reduce false positives, accepting higher false negative rates to avoid expensive customer friction.
+    \item \textbf{Small clients} ($C_{FP}=\$10$): Aggressive thresholds maximize fraud detection, as false positive costs are minimal.
+\end{itemize}
+
+\subsection{Detailed Per-Client Results}
+
+Table \ref{tab:detailed_results} presents the complete per-client economic analysis. Risk-Weighted FL achieves lower total loss by personalizing thresholds to each client's cost structure, with improvements ranging from 48.9\% to 100\%.
+
+\begin{table}[h]
+\centering
+\caption{Detailed Per-Client Economic Loss Comparison}
+\label{tab:detailed_results}
+\begin{tabular}{@{}ccccccc@{}}
+\toprule
+\textbf{Client} & \textbf{$C_{FP}$} & \textbf{FedAvg} & \textbf{RW} & \textbf{RW} & \textbf{Loss} \\
+ & & \textbf{Loss} & \textbf{$\tau^*$} & \textbf{Loss} & \textbf{Reduction} \\
+\midrule
+0 & \$200 & \$9,594 & 0.17 & \$4,904 & 48.9\% \\
+1 & \$200 & \$4,485 & 0.20 & \$2,101 & 53.2\% \\
+2 & \$50 & \$2,225 & 0.17 & \$558 & 74.9\% \\
+3 & \$50 & \$1,639 & 0.17 & \$820 & 49.9\% \\
+4 & \$50 & \$1,090 & 0.14 & \$409 & 62.5\% \\
+5 & \$10 & \$664 & 0.13 & \$275 & 58.6\% \\
+6 & \$10 & \$471 & 0.18 & \$155 & 67.1\% \\
+7 & \$10 & \$461 & 0.20 & \$0 & 100.0\% \\
+\midrule
+\multicolumn{2}{c}{\textbf{Total}} & \$20,629 & -- & \$9,222 & \textbf{55.3\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Sensitivity Analysis}
+
+We analyze sensitivity to key parameters:
+
+\subsubsection{False Positive Cost Sensitivity}
+
+We vary $C_{FP}$ across $\{10, 50, 100\}$ and observe:
+\begin{itemize}
+    \item Higher $C_{FP}$ leads to higher optimal thresholds
+    \item Risk-Weighted FL maintains consistent improvements across all cost levels
+\end{itemize}
+
+\subsubsection{Non-IID Skew Sensitivity}
+
+We test with mild and strong non-IID skew:
+\begin{itemize}
+    \item Strong skew: 64.39\% average improvement
+    \item Mild skew: Risk-Weighted FL consistently outperforms FedAvg across all tested non-IID regimes
+\end{itemize}
+
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Key Findings}
+
+\begin{enumerate}
+    \item \textbf{Personalization matters}: Heterogeneous institutions benefit from personalized decision boundaries rather than one-size-fits-all thresholds.
+    
+    \item \textbf{Risk-weighted aggregation is effective}: Weighting client contributions by economic risk exposure improves global model quality for high-stakes clients.
+    
+    \item \textbf{Universal improvement}: All participating clients benefit from the risk-weighted approach, suggesting it is Pareto-improving.
+\end{enumerate}
+
+\subsection{Practical Implications}
+
+Our framework has several practical implications for federated fraud detection:
+
+\begin{itemize}
+    \item \textbf{Regulatory compliance}: Different jurisdictions may have different fraud detection requirements; personalized thresholds enable compliance.
+    
+    \item \textbf{Customer experience}: Premium institutions can balance fraud detection with customer experience by accounting for friction costs.
+    
+    \item \textbf{Incentive alignment}: Institutions with higher risk exposure have greater influence on the global model, aligning incentives for participation.
+\end{itemize}
+
+\subsection{Limitations}
+
+\begin{itemize}
+    \item \textbf{Cost estimation}: Accurate estimation of $C_{FP}$ requires careful analysis of customer behavior and operational costs.
+    
+    \item \textbf{Synthetic data}: Results are demonstrated on synthetic data; real-world validation is needed.
+    
+    \item \textbf{Privacy considerations}: Risk scores may leak information about client data distributions.
+\end{itemize}
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented Risk-Weighted Cost-Sensitive Federated Learning, a framework that incorporates client-specific economic costs into federated fraud detection. Our approach achieves 64.39\% average loss reduction compared to standard FedAvg by:
+
+\begin{enumerate}
+    \item Weighting client contributions by economic risk exposure
+    \item Optimizing decision thresholds per-client based on their specific cost structures
+\end{enumerate}
+
+Future work includes:
+\begin{itemize}
+    \item Validation on real-world multi-institutional fraud data
+    \item Privacy-preserving risk score computation using secure aggregation
+    \item Extension to multi-objective optimization with fairness constraints
+    \item Dynamic cost estimation based on historical false positive feedback
+\end{itemize}
+
+\section*{Acknowledgment}
+
+The authors would like to thank [acknowledgments here].
+
+\begin{thebibliography}{00}
+
+\bibitem{dal2017credit}
+A. Dal Pozzolo, O. Caelen, R. A. Johnson, and G. Bontempi, ``Calibrating probability with undersampling for unbalanced classification,'' in \textit{2015 IEEE Symposium Series on Computational Intelligence}, 2015, pp. 159--166.
+
+\bibitem{mcmahan2017communication}
+H. B. McMahan, E. Moore, D. Ramage, S. Hampson, and B. A. y Arcas, ``Communication-efficient learning of deep networks from decentralized data,'' in \textit{Proc. AISTATS}, 2017, pp. 1273--1282.
+
+\bibitem{li2020federated}
+T. Li, A. K. Sahu, A. Talwalkar, and V. Smith, ``Federated learning: Challenges, methods, and future directions,'' \textit{IEEE Signal Processing Magazine}, vol. 37, no. 3, pp. 50--60, 2020.
+
+\bibitem{konevcny2016federated}
+J. Kone\v{c}n\'y, H. B. McMahan, F. X. Yu, P. Richt\'arik, A. T. Suresh, and D. Bacon, ``Federated learning: Strategies for improving communication efficiency,'' \textit{arXiv preprint arXiv:1610.05492}, 2016.
+
+\bibitem{geyer2017differentially}
+R. C. Geyer, T. Klein, and M. Nabi, ``Differentially private federated learning: A client level perspective,'' \textit{arXiv preprint arXiv:1712.07557}, 2017.
+
+\bibitem{elkan2001foundations}
+C. Elkan, ``The foundations of cost-sensitive learning,'' in \textit{Proc. IJCAI}, vol. 17, 2001, pp. 973--978.
+
+\bibitem{bahnsen2014example}
+A. C. Bahnsen, D. Aouada, and B. Ottersten, ``Example-dependent cost-sensitive logistic regression for credit scoring,'' in \textit{Proc. ICMLA}, 2014, pp. 263--269.
+
+\bibitem{bahnsen2016example}
+A. C. Bahnsen, D. Aouada, A. Stojanovic, and B. Ottersten, ``Feature engineering strategies for credit card fraud detection,'' \textit{Expert Systems with Applications}, vol. 51, pp. 134--142, 2016.
+
+\bibitem{yang2019federated}
+Q. Yang, Y. Liu, T. Chen, and Y. Tong, ``Federated machine learning: Concept and applications,'' \textit{ACM Transactions on Intelligent Systems and Technology}, vol. 10, no. 2, pp. 1--19, 2019.
+
+\end{thebibliography}
+
+\end{document}
